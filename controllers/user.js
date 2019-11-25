@@ -7,6 +7,9 @@ const validator = require('validator');
 const mailChecker = require('mailchecker');
 const User = require('../models/User');
 
+const SendOtp = require('sendotp');
+const sendOtp = new SendOtp('201993AhfXTDCNZ6OR5aa3a3a5');
+
 const randomBytesAsync = promisify(crypto.randomBytes);
 
 /**
@@ -49,6 +52,98 @@ exports.postLogin = (req, res, next) => {
       res.redirect(req.session.returnTo || '/');
     });
   })(req, res, next);
+};
+
+/**
+ * GET /login-with-otp
+ * Login with OTP page.
+ */
+exports.getLoginWithOtp = (req, res) => {
+  if (req.user) {
+    return res.redirect('/');
+  }
+  res.render('account/login-with-otp', {
+    title: 'Login With OTP'
+  });
+};
+
+/**
+ * POST /verify-otp
+ * Verify OTP sent by user.
+ */
+exports.postLoginWithOtp = async (req, res) => {
+  const { phone } = req.body;
+  if(!phone || ( (phone.toString()).length !== 10 )) {
+    req.flash('errors', { msg: 'Invalid phone number!' });
+    return res.redirect('back');
+  }
+
+  let otp = Math.floor(1000 + Math.random() * 9000);
+  let existingUser = await User.findOne({ phone: req.body.phone });
+  if(!existingUser) existingUser = await User.create({ phone: req.body.phone });
+  
+  sendOtp.send('91'+phone, 'WHITEP', otp, async (err, data, response) => {
+    if(err || data.type !== 'success') {
+      req.flash('errors', { msg: 'Error in sending OTP. Please retry!' });
+      return res.redirect('back');
+    }
+
+    existingUser.otp = otp;
+    await existingUser.save();
+    req.session.phone = phone;
+    return res.redirect('/verify-otp');
+  });
+};
+
+/**
+ * GET /verify-otp
+ * Verify OTP.
+ */
+exports.getVerifyOtp = async (req, res) => {
+  if (req.user) {
+    return res.redirect('/');
+  }
+  const { phone } = req.session;
+
+  let existingUser = await User.findOne({ phone : req.session.phone }).sort({ createdAt: -1 });
+  if (!existingUser || !existingUser.otp) {
+    req.flash('errors', { msg: 'Please enter phone number again!' });
+    return res.redirect('/login-with-otp');
+  }
+
+  res.render('account/verify-otp', {
+    title: 'Verify OTP',
+    phone
+  });
+};
+
+/**
+ * POST /verify-otp
+ * Verify OTP sent by user.
+ */
+exports.postVerifyOtp = async (req, res) => {
+
+  let existingUser = await User.findOne({ phone : req.session.phone }).sort({ createdAt: -1 });
+  if (!existingUser) {
+    req.flash('errors', { msg: 'Please enter phone number again!' });
+    return res.redirect('/login-with-otp');
+  }
+  
+  if (existingUser.otp !== Number(req.body.otp)) {
+    req.flash('errors', { msg: 'Incorrect OTP!' });
+    return res.redirect('back');
+  }
+
+  req.logIn(existingUser, async (err) => {
+      if (err) {
+        req.flash('errors', { msg: 'Internal server error in login' });
+        return res.redirect('back');
+      }
+      existingUser.otp = null;
+      await existingUser.save();
+      req.flash('success', { msg: 'You have successfully logged in!' });
+      return res.redirect('/');
+  });
 };
 
 /**

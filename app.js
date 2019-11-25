@@ -129,6 +129,10 @@ app.use('/webfonts', express.static(path.join(__dirname, 'node_modules/@fortawes
 app.get('/', homeController.index);
 app.get('/login', userController.getLogin);
 app.post('/login', userController.postLogin);
+app.get('/login-with-otp', userController.getLoginWithOtp);
+app.post('/login-with-otp', userController.postLoginWithOtp);
+app.get('/verify-otp', userController.getVerifyOtp);
+app.post('/verify-otp', userController.postVerifyOtp);
 app.get('/logout', userController.logout);
 app.get('/forgot', userController.getForgot);
 app.post('/forgot', userController.postForgot);
